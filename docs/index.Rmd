@@ -1,6 +1,6 @@
 ---
 title: "Assessment"
-author: "Annie"
+author: "Annie Brady"
 date: '`r Sys.Date()`'
 output: html_document
 ---
