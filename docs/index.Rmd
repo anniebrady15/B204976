@@ -6,10 +6,10 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,  message=FALSE, warning=FALSE)
 ```
-**Could do "Does the prescription of antibiotics (commonly treating respiratory infections) peak and fall with COVID-19 cases?"
-```{r message=FALSE, warning=FALSE}
+**OR "Does the prescription of antibiotics (commonly used to treat respiratory infections) correlate with the number of COVID-19 cases?"
+```{r}
 library(tidyverse)
 library(janitor) # cleaning data
 library(here) # for help importing data
@@ -27,12 +27,6 @@ https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community
 ```{r}
 data_jan2023 <- read.csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/6caa7144-f0e4-4ab0-b9e4-8fa10c8edf1c/download/pitc202301.csv") %>% 
   clean_names() #this cleans up the column names, adding underscores and making them all lowercase
-  
-
-gp_addresses <- read_csv("https://www.opendata.nhs.scot/dataset/f23655c3-6e23-4103-a511-a80d998adb90/resource/993422a6-c64f-4c57-ba41-9279ad5a7c89/download/practice_contactdetails_jan2023-open-data.csv", show_col_types = FALSE) %>% 
-  #show_col_types = FALSE prevents a message from being printed in the console, indicating the data type of each column. This message is not needed when reading in multiple files.
-  clean_names() %>% 
-  select(practice_code, gp_practice_name, data_zone, hb) # select for only the columns needed.
  
 hb_names <- read_csv("https://www.opendata.nhs.scot/dataset/9f942fdb-e59e-44f5-b534-d6e17229cc7b/resource/652ff726-e676-4a20-abda-435b98dd7bdc/download/hb14_hb19.csv", show_col_types = FALSE) %>% 
   clean_names() %>% 
@@ -47,251 +41,139 @@ data_jan2023 <- data_jan2023 %>%
 #I'm overwriting the object to save memory, and then using the str_detect command to filter for any rows containing the above drug names in the column "bnf_item_description".
 ```
 
-Joining with the GP address data and the Health Board Names data, so that later on I can compare the prescription rate between health boards and gp practices.
+I'm going to create a function to simplify the import, cleaning and filtering of my data, as I will have to do the same thing to each. I have added a line of code to remove values that are not whole number from the 'paid_quantity' column. This is because some of the datasets have errors where this column has a decimals, which is not possible as it is not possible to give 0.5 of a prescription.
+```{r}
+function_clean_filter_drugs <- function(data_url) {
+  data_url %>% #specifies to expect a URL
+    read_csv() %>% 
+    clean_names() %>% 
+    filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN"))) %>% 
+    filter(paid_quantity == floor(paid_quantity)) #floor rounds down to the nearest whole number, so this line filters for values in 'paid_quantity' that have no decimals.
+}
+```
+
+Joining with the Health Board Names data, so that later on I can compare the prescription rate between health boards. I am also going to create a function for this to save code later on.
 ```{r }
-jan2023_gp <- data_jan2023 %>% 
-  left_join(gp_addresses, join_by(hbt == hb), relationship = "many-to-many")
-#using a left_join to keep all of the data in data_jan2023, and only matching rows in gp_addresses. hbt == hb is because the health board column has a different name in dataframe.
-  
 jan2023_hb <- data_jan2023 %>% 
   left_join(hb_names, join_by(hbt == hb))%>% 
   filter(hb_name != "NA") # removing rows with NA.
+
+function_join_hb_data <- function(month_data) {
+  month_data %>% 
+  left_join(hb_names, join_by(hbt == hb))%>% 
+  filter(hb_name != "NA")
+}
 ```
 
-Calculate the Total of these antibiotics (routinely prescribed for chest infections) across Scotland for January 2023
-
-```{r }
-jan2023_total <- data_jan2023 %>% 
-  summarise(total = sum(paid_quantity))
-```
-
-Calculate the Total of these antibiotics (routinely prescribed for chest infections) across Scotland for January 2023 per health board
+Calculate the Total of these antibiotics (routinely prescribed for chest infections) across Scotland for January 2023 per health board. I have also made a funciton for this, as again I will be repeating it many times.
 
 ```{r }
 jan2023_total_per_hb <- jan2023_hb %>% 
   group_by(hb_name) %>% 
   summarise(monthly_total = sum(paid_quantity)) 
 
-jan2023_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in January 2023") %>% 
-  kable_styling("striped", full_width = FALSE)
+function_total_per_hb <- function(month_hb) {
+  month_hb %>% 
+    group_by(hb_name) %>% 
+    summarise(monthly_total = sum(paid_quantity))
+}
 ```
 
 Now I will do the same steps to generate these total for the month of July 2023.
 
 ```{r }
-data_july2023 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/7bb45ee6-6f1c-45f4-933b-958bdbe0ca4f/download/pitc202307.csv", show_col_types = FALSE) %>% 
-  clean_names()
+data_july2023 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/7bb45ee6-6f1c-45f4-933b-958bdbe0ca4f/download/pitc202307.csv") 
 ```
 
 ```{r }
-data_july2023 <- data_july2023 %>% 
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
-```
-
-```{r }
-july2023_gp <- data_july2023 %>% 
-  left_join(gp_addresses, join_by(hbt == hb), relationship = "many-to-many")
-  
-july2023_hb <- data_july2023 %>% 
-  left_join(hb_names, join_by(hbt == hb))%>% 
-  filter(hb_name != "NA")
+july2023_hb <- function_join_hb_data(data_july2023) 
 ```
 
 ```{r}
-july2023_total_per_hb <- july2023_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(monthly_total = sum(paid_quantity))
-
-july2023_total_per_hb %>% 
-  adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in July 2023") %>% 
-  kable_styling("striped", full_width = FALSE)
+july2023_total_per_hb <- function_total_per_hb(july2023_hb) 
 ```
 
-Calculate the total of these prescriptions for 2023 January and July
-```{r}
-jan2023_total <- data_jan2023 %>% 
-  summarise(total = sum(paid_quantity))
 
-july2023_total <- data_july2023 %>% 
-  summarise(total = sum(paid_quantity))
-```
-
-Join January and July to each other. Full join used because all of the data in both dataframes are required. The data is then reformatted using pivot_longer so that it can be made into a bar chart (geom_col) for comparison between the two months.
+Join January and July to each other. Full join used because all of the data in both dataframes are required.
 ```{r}
 jan_july23_totals_hb <- jan2023_total_per_hb %>% 
   full_join(july2023_total_per_hb, by = "hb_name") %>% 
   rename(
-    january = monthly_total.x,  # Rename the January total column
-    july = monthly_total.y) %>%        # Rename the July total columnn
-  pivot_longer(cols = c(january, july),  # Columns to reshape
-               names_to = "month",  # New column for month
-               values_to = "prescriptions")
+    january23 = monthly_total.x,  # Rename the January total column
+    july23 = monthly_total.y)
 ```
-
-```{r}
-jan_july23_totals_hb %>% 
-    ggplot(aes(x = hb_name,
-         y = prescriptions,
-         fill = month))+
-  geom_col(position = "dodge")+
-  labs(x = "Health Board", y = "Monthly Total")+
-  theme_bw() +
-  theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 6)) +
-  scale_fill_manual(values = wes_palette("GrandBudapest2", 2)) +
-   coord_flip()
-```
-
-This graph nicely shows how much higher the prescription rate is these antibiotics (commonly prescribed for chest infections) are in January than July in 2023. 
 
 Now I want to know if this trend can be seen in other years - so I am going to look at 2017, 2019 and 2021.
 
-I will start with 2021. Here I load the data and filter it for the antibiotics I want.
+I will start with 2021. Here I load the data and filter it for the antibiotics I want using the function I made previously.
 ```{r}
-data_jan2021 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/7722a6e6-a6b6-49ec-aa63-fdc4bc727f05/download/pitc202101.csv", show_col_types = FALSE) %>% 
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
+data_jan2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/7722a6e6-a6b6-49ec-aa63-fdc4bc727f05/download/pitc202101.csv")
 
-data_july2021 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/5c1cd207-1958-4105-923f-ab60983d3f90/download/pitc202107.csv", show_col_types = FALSE) %>% 
-  clean_names() %>% 
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
+data_july2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/5c1cd207-1958-4105-923f-ab60983d3f90/download/pitc202107.csv")
+  
 ```
 
-Had to remove a row, because there can't be a .5 in paid quantity, so it must be a mistake. Therefore it had to be removed.
+
 ```{r}
-jan2021_hb <- data_jan2021 %>% 
-  left_join(hb_names, join_by(hbt == hb))%>% 
-  filter(hb_name != "NA") %>% 
-  filter(paid_quantity != 42.5)
+jan2021_hb <- function_join_hb_data(data_jan2021)
 ```
 
 ```{r}
-jan2021_total_per_hb <- jan2021_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(jan_total_prescriptions = sum(paid_quantity))
-
-jan2021_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in January 2021") %>% 
-  kable_styling("striped", full_width = FALSE)
+jan2021_total_per_hb <- function_total_per_hb(jan2021_hb) 
 ```
 
 Now do it all with July 2021!
 ```{r}
-july2021_hb <- data_july2021 %>% 
-  left_join(hb_names, join_by(hbt == hb))%>% 
-  filter(hb_name != "NA")
+july2021_hb <- function_join_hb_data(data_july2021) 
 ```
 
 ```{r}
-july2021_total_per_hb <- july2021_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(july_total_prescriptions = sum(paid_quantity))
-
-july2021_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in July 2021") %>% 
-  kable_styling("striped", full_width = FALSE)
-
+july2021_total_per_hb <- function_total_per_hb(july2021_hb) 
 ```
 
-Join January and July to each other. Full join used because all of the data in both dataframes are required. The data is then reformatted using pivot_longer so that it can be made into a bar chart (geom_col) for comparison between the two months.
+Join January and July to each other.Full join used because all of the data in both dataframes are required.I have renamed the monthly total columns to make it clear what month the data is from.
 ```{r}
 jan_july21_totals_hb <- jan2021_total_per_hb %>% 
-  full_join(july2021_total_per_hb, by = "hb_name") %>%
+  full_join(july2021_total_per_hb, by = "hb_name") %>% 
   rename(
-    january = jan_total_prescriptions,
-    july = july_total_prescriptions
-  ) %>% 
-  pivot_longer(cols = c(january, july),  # Columns to reshape
-               names_to = "month",  # New column for month
-               values_to = "prescriptions")
+    january21 = monthly_total.x,  # Rename the January total column
+    july21 = monthly_total.y)
 ```
 
-```{r}
-plot_prescriptions_2021 <- jan_july21_totals_hb %>% 
-    ggplot(aes(x = hb_name,
-         y = prescriptions,
-         fill = month))+
-  geom_col(position = "dodge")+
-  labs(x = "Health Board", y = "Monthly Total")+
-  theme_bw() +
-  theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 6)) +
-  scale_fill_manual(values = wes_palette("GrandBudapest1", 2)) +
-   coord_flip()
-```
-
-Calculate the total of these prescriptions for 2021 January and July
-```{r}
-jan2021_total <- data_jan2021 %>% 
-  mutate(total = sum(paid_quantity)) %>% 
-  select(hbt, total)
-
-july2021_total <- data_july2021 %>% 
-  mutate(total = sum(paid_quantity)) %>% 
-  select(hbt, total)
-```
 Here we can see that July has higher rates of prescription of this antibiotic. This is different to 2023. What was going on in the world/Scotland during this time? How do rates compare to the same months in different years?
 
 I want to see if the trend continues - lets look at other years.
 
 2019:
 ```{r}
-data_jan2019 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/3bd6e3cc-b8b7-493b-b6aa-f9fcadbb05d2/download/pitc201901.csv", show_col_types = FALSE) %>% 
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
+data_jan2019 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/3bd6e3cc-b8b7-493b-b6aa-f9fcadbb05d2/download/pitc201901.csv")
 
-data_july2019 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/6e3856e9-88cb-495a-8c8a-54b0460df950/download/pitc201907.csv", show_col_types = FALSE) %>% 
-  clean_names() %>% 
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
+data_july2019 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/6e3856e9-88cb-495a-8c8a-54b0460df950/download/pitc201907.csv")
 ```
-
+The function I made doesn't work here because the older data is named differently - hbt is instead hbt2014. So i need to alter the function.
 ```{r}
-jan2019_hb <- data_jan2019 %>% 
+function_join_hb_data_hbt2014 <- function(month_data) {
+  month_data %>% 
   left_join(hb_names, join_by(hbt2014 == hb))%>% 
   filter(hb_name != "NA")
+}
+
+jan2019_hb <- function_join_hb_data_hbt2014(data_jan2019)
 ```
 
 ```{r}
-jan2019_total_per_hb <- jan2019_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(monthly_total = sum(paid_quantity))
-
-jan2019_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in January 2019") %>% 
-  kable_styling("striped", full_width = FALSE)
+jan2019_total_per_hb <- function_total_per_hb(jan2019_hb) 
 ```
 
 Now do it all with July 2019!
 
 Had to remove a row, because there can't be a .5 in paid quantity, so it must be a mistake. Therefore it had to be removed.
 ```{r}
-july2019_hb <- data_july2019 %>% 
-  left_join(hb_names, join_by(hbt2014 == hb))%>% 
-  filter(hb_name != "NA")%>% 
-  filter(paid_quantity != 6.5)
+july2019_hb <- function_join_hb_data_hbt2014(data_july2019) 
 ```
 
 ```{r}
-july2019_total_per_hb <- july2019_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(monthly_total = sum(paid_quantity)) 
-
-july2019_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in July 2019") %>% 
-  kable_styling("striped", full_width = FALSE)
+july2019_total_per_hb <- function_total_per_hb(july2019_hb)
 ```
 
 Join January and July to each other. Full join used because all of the data in both dataframes are required. The data is then reformatted using pivot_longer so that it can be made into a bar chart (geom_col) for comparison between the two months.
@@ -299,86 +181,34 @@ Join January and July to each other. Full join used because all of the data in b
 jan_july19_totals_hb <- jan2019_total_per_hb %>% 
   full_join(july2019_total_per_hb, by = "hb_name") %>% 
   rename(
-    january = monthly_total.x,  # Rename the January total column
-    july = monthly_total.y) %>%        # Rename the July total columnn
-  pivot_longer(cols = c(january, july),  # Columns to reshape
-               names_to = "month",  # New column for month
-               values_to = "prescriptions")
-```
-
-```{r}
-jan_july19_totals_hb %>% 
-    ggplot(aes(x = hb_name,
-         y = prescriptions,
-         fill = month))+
-  geom_col(position = "dodge")+
-  labs(x = "Health Board", y = "Monthly Total")+
-  theme_bw() +
-  theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 6)) +
-  scale_fill_manual(values = wes_palette("Darjeeling2", 2)) +
-   coord_flip()
-```
-
-Calculate the total of these prescriptions for 2019 January and July
-```{r}
-jan2019_total <- data_jan2019 %>% 
-  summarise(total = sum(paid_quantity))
-
-july2019_total <- data_july2019 %>% 
-  summarise(total = sum(paid_quantity))
+    january19 = monthly_total.x,  # Rename the January total column
+    july19 = monthly_total.y)
 ```
 
 2017:
 ```{r}
-data_jan2017 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/3def845e-c830-4b73-8e02-e42adcde5afa/download/pitc201701.csv", show_col_types = FALSE) %>% 
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
+data_jan2017 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/3def845e-c830-4b73-8e02-e42adcde5afa/download/pitc201701.csv")
 
-data_july2017 <- read_csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/44bc24dd-3a8e-4056-8ee2-eb903bc352ac/download/pitc201707.csv", show_col_types = FALSE) %>% 
-  clean_names() %>% 
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN")))
+data_july2017 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/44bc24dd-3a8e-4056-8ee2-eb903bc352ac/download/pitc201707.csv")
 ```
  Had to remove a row, because there can't be a .5 in paid quantity, so it must be a mistake. Therefore it had to be removed.
 ```{r}
-jan2017_hb <- data_jan2017 %>% 
-  left_join(hb_names, join_by(hbt2014 == hb))%>% 
-  filter(hb_name != "NA")%>% 
-  filter(paid_quantity != 3.5)
+jan2017_hb <- function_join_hb_data_hbt2014(data_jan2017)
 ```
 
 ```{r}
-jan2017_total_per_hb <- jan2017_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(monthly_total = sum(paid_quantity))
-
-jan2017_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in January 2017") %>% 
-  kable_styling("striped", full_width = FALSE)
+jan2017_total_per_hb <- function_total_per_hb(jan2017_hb)
 ```
 
 Now do it all with July 2017!
 
 Had to remove a row, because there can't be a .5 in paid quantity, so it must be a mistake. Therefore it had to be removed.
 ```{r}
-july2017_hb <- data_july2017 %>% 
-  left_join(hb_names, join_by(hbt2014 == hb))%>% 
-  filter(hb_name != "NA")%>% 
-  filter(paid_quantity != 47.5)
+july2017_hb <- function_join_hb_data_hbt2014(data_july2017)
 ```
 
 ```{r}
-july2017_total_per_hb <- july2017_hb %>% 
-  group_by(hb_name) %>% 
-  summarise(monthly_total = sum(paid_quantity))
-
-july2017_total_per_hb %>% 
-   adorn_totals() %>% 
-  kable(col.names = c("Health Board", "Total Monthly Prescriptions"), align = "lcc",
-        caption = "Antibiotic Prescriptions per Health Board in July 2019") %>% 
-  kable_styling("striped", full_width = FALSE)
+july2017_total_per_hb <- function_total_per_hb(july2017_hb)
 ```
 
 Join January and July to each other. Full join used because all of the data in both dataframes are required. The data is then reformatted using pivot_longer so that it can be made into a bar chart (geom_col) for comparison between the two months.
@@ -386,41 +216,40 @@ Join January and July to each other. Full join used because all of the data in b
 jan_july17_totals_hb <- jan2017_total_per_hb %>% 
   full_join(july2017_total_per_hb, by = "hb_name") %>% 
   rename(
-    january = monthly_total.x,  # Rename the January total column
-    july = monthly_total.y) %>%        # Rename the July total columnn
-  pivot_longer(cols = c(january, july),  # Columns to reshape
-               names_to = "month",  # New column for month
+    january17 = monthly_total.x,  # Rename the January total column
+    july17 = monthly_total.y)
+```
+Now I want to do a big join of all of months, to generate a nice big table.
+```{r}
+prescription_big_join <- jan_july23_totals_hb %>% 
+  full_join(jan_july21_totals_hb, by = "hb_name") %>% 
+  full_join(jan_july19_totals_hb, by = "hb_name") %>%
+  full_join(jan_july17_totals_hb, by = "hb_name")
+
+prescription_totals <- prescription_big_join %>% 
+  summarise(across(where(is.numeric), sum)) %>% #across(where(isnumeric),sum) tells summarise to calculate the total of each numeric column.
+  pivot_longer(cols = c(january23:july17),
+               names_to = "month",
                values_to = "prescriptions")
+
+prescription_totals %>% 
+  ggplot(aes(x = factor(month, levels = c("january17", "july17", "january19", "july19", "january21", "july21", "january23", "july23")),
+             y = prescriptions))+
+  geom_col(fill = wes_palette("GrandBudapest2") [2]) +
+  labs(x = "Month", 
+       y = "Monthly Total Antibiotic* Prescriptions",
+       title = "Monthly Antibiotic Prescriptions for Respiritory Infections in Scotland",
+       subtitle = "for the months January and July in the years 2017, 2019, 2021, 2023",
+       caption = "* Antibiotics commonly prescribed for resipiritory infections")+
+  theme_bw()
 ```
+From the graph, you can see that, generally, prescription rates are higher in January that July. This coincides with flu season. However, 2021 is an outlier in that January 2021 has much lower rates than normal, and it is lower than July (which is also slighlt lower than normal). This may be because this is the only year shown on the graph that was during the COVID pandemic. On the 5th January 2021, Scotland went into lockdown meaning that people were not attending GP clinics and therefore it is likely that this may have impacted prescription rates.
 
-```{r}
-jan_july17_totals_hb %>% 
-    ggplot(aes(x = hb_name,
-         y = prescriptions,
-         fill = month))+
-  geom_col(position = "dodge")+
-  labs(x = "Health Board", y = "Monthly Total")+
-  theme_bw() +
-  theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 6)) +
-  scale_fill_manual(values = wes_palette("Chevalier1", 2)) +
-   coord_flip()
-```
-
-Calculate the total of these prescriptions for 2019 January and July
-```{r}
-jan2017_total <- data_jan2017 %>% 
-  summarise(total = sum(paid_quantity))
-
-july2017_total <- data_july2017 %>% 
-  summarise(total = sum(paid_quantity))
-```
-
-I want to know if the strange result in 2021 correlated with peaks in COVID cases.
+I want to know more about the unusual results in 2021. I want to explore the correlation between peaks in COVID-19 cases and the rates of Antibiotic Prescription.
 I'm going to use "Weekly Tests and Cases by Health Board" from Public Health Scotland.
 Convert week_ending into year-month-day / ymd() using lubridate
 ```{r}
-COVID_cases_tests_hb <- read_csv("https://www.opendata.nhs.scot/dataset/49dc2d88-1cb0-4420-a5ea-d1bbada62fb2/resource/2803acc8-8ec3-4c4a-81a5-f10952bf66f4/download/weekly_tests_cases_hb_20241030.csv", show_col_types = FALSE) %>% 
+covid_cases_tests_hb <- read_csv("https://www.opendata.nhs.scot/dataset/49dc2d88-1cb0-4420-a5ea-d1bbada62fb2/resource/2803acc8-8ec3-4c4a-81a5-f10952bf66f4/download/weekly_tests_cases_hb_20241030.csv") %>% 
   clean_names() %>% 
   filter(hb != "S92000003") %>% #removed the aggregated data for the whole of Scotland
   mutate(week_ending = ymd(week_ending)) #convert the week_ending column from dbl to date for easier analysis.
@@ -429,92 +258,145 @@ COVID_cases_tests_hb <- read_csv("https://www.opendata.nhs.scot/dataset/49dc2d88
 Filter for the year (2021) and then turn weekly cases into monthly cases - create a graph tracking cases?
 
 ```{r}
-COVID_cases_2021_month <- COVID_cases_tests_hb %>% 
+covid_monthly_total_2021 <- covid_cases_tests_hb %>% 
   filter(year(week_ending) == 2021) %>% #filter for only the year 2021
-  mutate(month = month(week_ending)) #create a column containing the month so that group_by can be applied 
-
-COVID_monthly_total_2021 <- COVID_cases_2021_month %>% 
+  mutate(month = month(week_ending)) %>% #create a column containing the month so that group_by can be applied 
   group_by(month) %>% 
-  summarise(monthly_cases = sum(weekly_cases)) #add up the weekly cases, presenting total per month.
+  summarise(monthly_cases = sum(weekly_cases)) %>% #add up the weekly cases, presenting total per month.
+    mutate(month = recode(month, "1" = "january","2" = "february","3" = "march","4" = "april","5" = "may","6" = "june","7" = "july","8" = "august", "9" = "september","10" = "october","11" = "november","12" = "december"))
 
-#Table with totals for each month
-covid_jan_july <- COVID_monthly_total_2021 %>% 
-  filter(month == 1 | month == 7) %>% 
-  mutate(month = recode(month, `1` = "January", `7` = "July"))
   
 ```
-This data shows that COVID cases were high in July than January in 2021 - this may explain the higher in antibiotic prescriptions in July. This is also a problem however - antibiotics do not treat COVID.
-Now filter for Jan and July, then join to the prescription data for comparison
-```{r}
-jan_2021_COVID <- COVID_cases_2021_month %>% 
-  filter(month == 1) %>% 
-  group_by(hb) %>% 
-  summarise(jan_covid = sum(weekly_cases))
 
-july_2021_COVID <- COVID_cases_2021_month %>% 
-  filter(month == 7) %>% 
-  group_by(hb) %>% 
-  summarise(july_covid = sum(weekly_cases))
-  
-jan_july_2021_COVID <- jan_2021_COVID %>% 
-  full_join(july_2021_COVID, by = "hb")
-```
-Now join this to my prescription data
-```{r}
-hb_compare_2021_drug_covid <- jan_july_2021_COVID %>% 
-  full_join(jan2021_total_per_hb, join_by(hb == hbt)) %>% 
-  full_join(july2021_total_per_hb, join_by(hb == hbt))
-```
 
-Creating a graoh! THIS DOESNT WORK
+
+
+I want to plot a graph of the correlation between antibiotic prescriptions and covid cases.
 ```{r}
-plot_2021_drug_covid<- hb_compare_2021_drug_covid %>% 
-  pivot_longer(cols = c(jan_covid, july_covid, jan_total_prescriptions, july_total_prescriptions),
+data_feb2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/3f5c55ac-1bcd-4c57-a7b6-12911f15239c/download/pitc202102.csv")
+
+data_march2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/df6fc708-5c50-4d57-a5c4-faa19a92c227/download/pitc202103.csv")
+
+data_april2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/51b7ad3f-6d52-4165-94f4-92e322656c85/download/pitc202104.csv")
+
+data_may2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/167ffab7-a168-43d1-90c4-118aa955edfb/download/pitc202105.csv")
+
+data_june2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/05159d26-f504-47ce-9d33-29b739e666ea/download/pitc202106.csv")
+
+data_aug2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/6cdae245-0423-4e6f-9e1c-dc9e129df3aa/download/pitc202108.csv")
+
+data_sep2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/d7d1ada5-2763-4698-bf39-7bdb06f67377/download/pitc202109.csv")
+
+data_oct2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/35cbc6b1-3462-4563-88ba-d57c03782534/download/pitc202110.csv")
+
+data_nov2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/6ba23bd1-f53b-4946-bc79-00633239d08f/download/pitc202111.csv")
+
+data_dec2021 <- function_clean_filter_drugs("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/ad9e7b46-47fb-4d42-baad-f8e98e8f5936/download/pitc202112.csv")
+```
+Now I will wrangle these to give me totals
+```{r}
+jan_2021_totals <- data_jan2021 %>% 
+  group_by(hbt) %>% 
+    summarise(january = sum(paid_quantity))
+
+feb_2021_totals <- data_feb2021 %>% 
+  group_by(hbt) %>% 
+    summarise(february = sum(paid_quantity))
+
+march_2021_totals <- data_march2021 %>% 
+  group_by(hbt) %>% 
+    summarise(march = sum(paid_quantity))
+
+april_2021_totals <- data_april2021 %>% 
+  group_by(hbt) %>% 
+    summarise(april = sum(paid_quantity))
+
+may_2021_totals <- data_may2021 %>% 
+  group_by(hbt) %>% 
+    summarise(may = sum(paid_quantity))
+
+june_2021_totals <- data_june2021 %>% 
+  group_by(hbt) %>% 
+    summarise(june = sum(paid_quantity))
+
+july_2021_totals <- data_july2021 %>% 
+  group_by(hbt) %>% 
+    summarise(july = sum(paid_quantity))
+
+aug_2021_totals <- data_aug2021 %>% 
+  group_by(hbt) %>% 
+    summarise(august = sum(paid_quantity))%>%  
+  filter(hbt != "SB0806")#removing an error - this health board does not exist
+
+sep_2021_totals <- data_sep2021 %>% 
+  group_by(hbt) %>% 
+    summarise(september = sum(paid_quantity))
+
+oct_2021_totals <- data_oct2021 %>% 
+  group_by(hbt) %>% 
+    summarise(october = sum(paid_quantity)) %>%  
+  filter(hbt != "SB0806") 
+
+nov_2021_totals <- data_nov2021 %>% 
+  group_by(hbt) %>% 
+    summarise(november = sum(paid_quantity))%>%  
+  filter(hbt != "SB0806")
+
+dec_2021_totals <- data_dec2021 %>% 
+  group_by(hbt) %>% 
+    summarise(december = sum(paid_quantity))
+```
+Now join them all together:
+```{r}
+prescriptions_2021 <- jan_2021_totals %>% 
+  full_join(feb_2021_totals, by = "hbt") %>% 
+  full_join(march_2021_totals, by = "hbt") %>% 
+  full_join(april_2021_totals, by = "hbt") %>% 
+  full_join(may_2021_totals, by = "hbt") %>% 
+  full_join(june_2021_totals, by = "hbt") %>% 
+  full_join(july_2021_totals, by = "hbt") %>% 
+  full_join(aug_2021_totals, by = "hbt") %>% 
+  full_join(sep_2021_totals, by = "hbt") %>% 
+  full_join(oct_2021_totals, by = "hbt") %>% 
+  full_join(nov_2021_totals, by = "hbt") %>% 
+  full_join(dec_2021_totals, by = "hbt") %>% 
+  select(-hbt) %>% 
+  pivot_longer(cols = c("january":"december"),
                names_to = "month",
-               values_to = "total") %>% 
-  ggplot(aes(x = hb,
-             y = total,
-             colour = month,
-             group = month))+
-  geom_line()
-  
+               values_to = "prescriptions") %>% 
+  group_by(month) %>% 
+  summarise(prescriptions = sum(prescriptions))
+
+
 ```
-different graph - need a better way to present this - dont divide by health board? just totals.
+Join 'prescriptions_2021' to 'covid_monthly_total_2021
 ```{r}
-plot_covid <- jan_july_2021_COVID %>%
-  pivot_longer(cols = c(jan_covid, july_covid),
-               names_to = "month",
-               values_to = "total_cases") %>% 
-  ggplot(aes(x = hb,
-             y = total_cases,
-             fill = month)) +
-  geom_col(position = "dodge") +
-  coord_flip()
-  
-plot_covid + plot_prescriptions_2021
+prescriptions_covid_2021 <- prescriptions_2021 %>%
+  full_join(covid_monthly_total_2021, by = "month") %>% #the months are lowercase and out of order, so this needs fixing.
+  mutate(month = str_to_title(month)) %>%  #coverts months to title case, so that month.name can be applied.
+  mutate(month = factor(month, levels = month.name, ordered = TRUE)) %>% #this coverts the month column to factors with sepcified levels
+  arrange(month) #arrange the months in order
+
+#month.name is a built in character vector that contains the full names of the months in order.
 ```
-This one will just include totals for each month. This is better - compare it to other years?
+Now plot it on a graph
 ```{r}
-plot_1 <- covid_jan_july %>% 
-  ggplot(aes(x = month,
-             y = monthly_cases))+
-  geom_col()
-
-jan_july_prescriptions <- jan2021_total %>% 
-  full_join(july2021_total, by = "hbt", relationship = "many-to-many") %>%
-  summarize(
-    january = mean(total.x, na.rm = TRUE),
-    july = mean(total.y, na.rm = TRUE)
-  ) %>% 
-  pivot_longer(cols = c(january, july),
-               names_to = "month",
-               values_to = "total_prescriptions")
-
-plot_2 <- jan_july_prescriptions %>% 
-  ggplot(aes(x = month,
-             y = total_prescriptions))+
-  geom_col()
-
-plot_1 + plot_2
+prescriptions_covid_2021 %>% 
+  ggplot(aes(x = prescriptions,
+             y = monthly_cases)) +
+  geom_point()+
+  geom_smooth(method = "lm", color = "lightpink", linetype = "solid", size = 1) +
+  labs(title = "Antibiotic Prescriptions* vs. COVID Cases in 2021", x = "Number of Prescriptions", y = "COVID Cases",
+       caption = "* Antibiotics commonly prescribed for resipiritory infections") +
+  theme_minimal()
 ```
-
+This graph shows a positive correlation between the number of antibiotic prescriptions and COVID cases. I want to get more evidence for this correlation, so I will apply a statistical test.
+Here I use a Shapiro Test to see whether the data is normally distributed, so I know what statistical test to use. 
+```{r}
+shapiro.test(prescriptions_covid_2021$prescriptions)
+```
+Given that the p-value is < 0.05, it is not normally distributed. Therefore, I can calculate correlation using Spearmans Rank.
+```{r}
+cor.test(prescriptions_covid_2021$prescriptions, prescriptions_covid_2021$monthly_cases, method = "spearman")
+```
+rho = 0.685, suggesting fairly strong positive correlation between prescriptions of antibiotics for respiritory infections and the number of COVID cases. The p-value is < 0.05, suggesting a statistically significant correlation.
