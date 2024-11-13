@@ -18,16 +18,15 @@ library(knitr) #for making tables
 library(kableExtra) #for improving my tables
 library(patchwork)
 ```
-##Introduction
-
+## Introduction
 The data used in this report can be found at Public Health Scotland:
 https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community
 
 In this report, I will explore the relationship between the prescription of nine antibiotics commonly prescribed on the NHS to treat respiratory infections, and the number of COVID-19 cases in Scotland in 2020 and 2021.
 
 Antimicrobial resistance (AMR) is a growing global concern, and one of the key contributors to its rise is the overuse and misuse of antibiotics. In this context, it is crucial to understand how patterns of antibiotic prescribing may be influenced by factors such as the COVID-19 pandemic. Specifically, I aim to investigate whether the prescription rates of these antibiotics rose and fell with the number of COVID-19 cases, potentially indicating the prescription of antibiotics to people suffering from COVID, not a bacterial infection. It is important to note that COVID-19 is caused by a virus, and antibiotics are not effective in treating viral infections. Therefore, any rise in prescriptions could reflect inappropriate use of antibiotics, which may contribute to the AMR problem.
-##2021
-###Prescription Data
+## 2021
+### Prescription Data
 ```{r}
 data_jan2021 <- read.csv("https://www.opendata.nhs.scot/dataset/84393984-14e9-4b0d-a797-b288db64d088/resource/6caa7144-f0e4-4ab0-b9e4-8fa10c8edf1c/download/pitc202301.csv") %>% 
   clean_names() %>% 
@@ -124,7 +123,7 @@ prescriptions_2021 <- jan_2021_totals %>%
   group_by(month) %>% 
   summarise(prescriptions = sum(prescriptions))
 ```
-###COVID-19 Data
+### COVID-19 Data
 Now I want to load the covid data from Public Health Scotland - this data set is "Weekly Tests and Cases by Health Board" from the "Viral Respiratory Diseases (Including Influenza and COVID-19) Data in Scotland" colleciton. I chose this set so that I can join it to my other data by healthboard.
 ```{r}
 covid_cases_tests_hb <- read_csv("https://www.opendata.nhs.scot/dataset/49dc2d88-1cb0-4420-a5ea-d1bbada62fb2/resource/2803acc8-8ec3-4c4a-81a5-f10952bf66f4/download/weekly_tests_cases_hb_20241030.csv") %>% 
@@ -141,7 +140,7 @@ covid_monthly_total_2021 <- covid_cases_tests_hb %>%
   summarise(monthly_cases = sum(weekly_cases)) %>% #add up the weekly cases, presenting total per month.
     mutate(month = recode(month, "1" = "january","2" = "february","3" = "march","4" = "april","5" = "may","6" = "june","7" = "july","8" = "august", "9" = "september","10" = "october","11" = "november","12" = "december"))
 ```
-###Join COVID and Prescription Data
+### Join COVID and Prescription Data
 Here I joined 'prescriptions_2021' to 'covid_monthly_total_2021', so that I can compare COVID cases and prescription rates.
 ```{r}
 prescriptions_covid_2021 <- prescriptions_2021 %>%
