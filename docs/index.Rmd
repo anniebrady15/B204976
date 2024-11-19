@@ -1,173 +1,214 @@
 ---
-title: "Does the prescription of antibiotics commonly used to treat respiratory infections correlate with the number of COVID-19 cases?"
+title: "Does the prescription of antibiotics commonly used to treat respiratory infections correlate with COVID-19 cases in 2021?"
 author: "Annie Brady"
 date: '`r Sys.Date()`'
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE,  message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = TRUE,  message = FALSE, warning = FALSE)
 ```
 
-```{r include=FALSE}
+```{r}
 library(tidyverse)
 library(janitor) # cleaning data
 library(here) # for help importing data
 library(knitr) #for making tables
 library(kableExtra) #for improving my tables
 library(sf) #for making the map plot
+library(purrr) # for using the map() function
+library(patchwork)
 ```
-## Introduction
-The data used in this report can be found at Public Health Scotland:
-https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community
+### Introduction
 
-In this report, I will explore the relationship between the prescription of nine antibiotics commonly prescribed on the NHS to treat respiratory infections, and the number of COVID-19 cases in Scotland in 2021.
+In this report, I explored the relationship between the prescription of nine antibiotics commonly prescribed on the NHS to treat respiratory infections, and the number of COVID-19 cases in Scotland in 2021.  
+Antimicrobial resistance (AMR) is a growing global concern, and one of the key contributors to its rise is the overuse and misuse of antibiotics (Shallcross & Davies, 2014). In this context, it is crucial to understand how patterns of antibiotic prescribing may be influenced by factors such as the COVID-19 pandemic. Specifically, I aimed to investigate whether the prescription rates of these antibiotics rose and fell with the number of COVID-19 cases, potentially indicating the prescription of antibiotics to people suffering from COVID, not bacterial infections. It is important to note that COVID-19 is caused by a virus, and antibiotics are not effective in treating viral infections. Therefore, any rise in prescriptions could reflect inappropriate use of antibiotics, which may contribute to the AMR problem.
 
-Antimicrobial resistance (AMR) is a growing global concern, and one of the key contributors to its rise is the overuse and misuse of antibiotics. In this context, it is crucial to understand how patterns of antibiotic prescribing may be influenced by factors such as the COVID-19 pandemic. Specifically, I aim to investigate whether the prescription rates of these antibiotics rose and fell with the number of COVID-19 cases, potentially indicating the prescription of antibiotics to people suffering from COVID, not bacterial infections. It is important to note that COVID-19 is caused by a virus, and antibiotics are not effective in treating viral infections. Therefore, any rise in prescriptions could reflect inappropriate use of antibiotics, which may contribute to the AMR problem.
+### Prescriptions Data
 
-### Prescription Data
-```{r}
-data_jan2021 <- read.csv(here("data", "data_jan2021.csv")) %>% 
-  clean_names() %>% 
-  filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN"))) %>% 
-#Using the 'clean_names' function to clean up the column names by adding underscores and making them all lowercase. I then use the 'str_detect' command to filter for any rows containing the above drug names in the column "bnf_item_description".
-    filter(paid_quantity == floor(paid_quantity))
-```
-I'm going to create a function to simplify the import, cleaning and filtering of my data, as I will have to do the same thing to each month. I have added a line of code to remove values that are not whole number from the 'paid_quantity' column. This is because some of the datasets have errors where this column has a decimals, which is not possible as it is not possible to give 0.5 of a prescription.
-
-Talk about the Drugs I'm filtering for and why: Phenoxymethylpenicillin, Amoxicillin, co-Amoxiclav, Azithromycin, Clarithromycin, Erythromycin, Vibramycin-D (doxycycline), Doxycycline, Cefalexin.
+I started by creating a function for the the importing, cleaning and filtering of my monthly prescription data. I used `clean_names` to tidy up the columns names, and filtered `bnf_item_description` for the following drugs: Phenoxymethylpenicillin, Amoxicillin, co-Amoxiclav, Azithromycin, Clarithromycin, Erythromycin, Vibramycin-D (doxycycline), Doxycycline, Cefalexin. According to the NHS website, these are the antibiotics most commonly prescribed for respiratory infections (NHS, 2022). I added a line of code to remove values that are not whole number from the 'paid_quantity' column. This is because some of the data sets have errors where this column has decimals, which is not possible as it is not possible to give 0.5 of a prescription.
 ```{r}
 function_clean_filter_drugs <- function(data_month) {
     read_csv(here("data", data_month), show_col_types = FALSE) %>% 
-    clean_names() %>% 
-    filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN"))) %>% 
-    filter(paid_quantity == floor(paid_quantity)) #floor rounds down to the nearest whole number, so this line filters for values in 'paid_quantity' that have no decimals.
+    clean_names() %>% #Using the 'clean_names' function to clean up the column names by adding underscores and making them all lowercase.
+    filter(str_detect(bnf_item_description, c("PHENOXYMETHYLPENICILLIN|AMOXICILLIN| CO_AMOXICLAV|AZITHROMYCIN|CLARITHROMYCIN|ERYTHROMYCIN|VIBRAMYCIN|DOXYCYCLINE|CEFALEXIN"))) %>% #I then use the 'str_detect' command to filter for any rows containing the above drug names in the column "bnf_item_description".
+    filter(paid_quantity == floor(paid_quantity))  #floor rounds down to the nearest whole number, so this line filters for values in 'paid_quantity' that have no decimals.
+  } 
+```
+Then I downloaded the data sets for each month in 2021, so that I could plot a graph of the correlation between antibiotic prescriptions and COVID cases in 2021. I did this by creating a vector containing the file names. Then I used the `map()` function to apply `unction_clean_filter_drugs` to each month. I remaned the files in the 
+```{r}
+prescription_files <- c(
+  "pitc202101.csv", "pitc202102.csv", "pitc202103.csv", "pitc202104.csv",
+  "pitc202105.csv", "pitc202106.csv", "pitc202107.csv",
+  "pitc202108.csv", "pitc202109.csv", "pitc202110.csv",
+  "pitc202111.csv", "pitc202112.csv")
+prescription_data_list <- map(prescription_files, function_clean_filter_drugs)
+names(prescription_data_list) <- c(
+  "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"
+)
+```
+Then I wrangled these to give totals for each health board. I chose to do total in each health board, firstly so I could easily join the data sets, but also so that later on I could compare the rates of antibiotic prescription in each health board, and see if there are any that are especially bad for over-prescription.
+```{r}
+function_summarise_prescriptions <- function(data, month_name) {
+  data %>%
+    group_by(hbt) %>%
+    summarise(!!month_name := sum(paid_quantity)) %>%
+    filter(hbt != "SB0806") #removing an error - this health board does not exist
 }
+
+summarised_prescriptions <- imap(prescription_data_list, ~ function_summarise_prescriptions(.x, .y))
 ```
-Now I am going to download the datasets for each month in 2021, so that I can plot a graph of the correlation between antibiotic prescriptions and covid cases in 2021.
+Then I joined the totals from each month together, and wrangled the data using `pivot_longer` to create a dataset containing prescriptions per month for 2021.
 ```{r}
-data_feb2021 <- function_clean_filter_drugs("data_feb2021.csv")
-data_march2021 <- function_clean_filter_drugs("data_march2021.csv")
-data_april2021 <- function_clean_filter_drugs("data_april2021.csv")
-data_may2021 <- function_clean_filter_drugs("data_may2021.csv")
-data_june2021 <- function_clean_filter_drugs("data_june2021.csv")
-data_july2021 <- function_clean_filter_drugs("data_july2021.csv")
-data_aug2021 <- function_clean_filter_drugs("data_aug2021.csv")
-data_sep2021 <- function_clean_filter_drugs("data_sep2021.csv")
-data_oct2021 <- function_clean_filter_drugs("data_oct2021.csv")
-data_nov2021 <- function_clean_filter_drugs("data_nov2021.csv")
-data_dec2021 <- function_clean_filter_drugs("data_dec2021.csv")
-```
-Now I will wrangle these to give me totals for each healthboard. I have chosen to do total in each health board, firslt so i can easily join the datasets, but also so that later on I can compare the rates of antibiotic presciption in each healthboard, and see if there are any that are especially bad for overprescripton.
-```{r}
-jan_2021_totals <- data_jan2021 %>% 
-  group_by(hbt) %>% 
-    summarise(january = sum(paid_quantity)) %>% 
-  filter(hbt != "SB0806")
-feb_2021_totals <- data_feb2021 %>% 
-  group_by(hbt) %>% 
-    summarise(february = sum(paid_quantity))
-march_2021_totals <- data_march2021 %>% 
-  group_by(hbt) %>% 
-    summarise(march = sum(paid_quantity))
-april_2021_totals <- data_april2021 %>% 
-  group_by(hbt) %>% 
-    summarise(april = sum(paid_quantity))
-may_2021_totals <- data_may2021 %>% 
-  group_by(hbt) %>% 
-    summarise(may = sum(paid_quantity))
-june_2021_totals <- data_june2021 %>% 
-  group_by(hbt) %>% 
-    summarise(june = sum(paid_quantity))
-july_2021_totals <- data_july2021 %>% 
-  group_by(hbt) %>% 
-    summarise(july = sum(paid_quantity))
-aug_2021_totals <- data_aug2021 %>% 
-  group_by(hbt) %>% 
-    summarise(august = sum(paid_quantity))%>%  
-  filter(hbt != "SB0806")#removing an error - this health board does not exist
-sep_2021_totals <- data_sep2021 %>% 
-  group_by(hbt) %>% 
-    summarise(september = sum(paid_quantity))
-oct_2021_totals <- data_oct2021 %>% 
-  group_by(hbt) %>% 
-    summarise(october = sum(paid_quantity)) %>%  
-  filter(hbt != "SB0806") 
-nov_2021_totals <- data_nov2021 %>% 
-  group_by(hbt) %>% 
-    summarise(november = sum(paid_quantity))%>%  
-  filter(hbt != "SB0806")
-dec_2021_totals <- data_dec2021 %>% 
-  group_by(hbt) %>% 
-    summarise(december = sum(paid_quantity))
-```
-Now join them all together:
-```{r}
-prescriptions_2021 <- jan_2021_totals %>% 
-  full_join(feb_2021_totals, by = "hbt") %>% 
-  full_join(march_2021_totals, by = "hbt") %>% 
-  full_join(april_2021_totals, by = "hbt") %>% 
-  full_join(may_2021_totals, by = "hbt") %>% 
-  full_join(june_2021_totals, by = "hbt") %>% 
-  full_join(july_2021_totals, by = "hbt") %>% 
-  full_join(aug_2021_totals, by = "hbt") %>% 
-  full_join(sep_2021_totals, by = "hbt") %>% 
-  full_join(oct_2021_totals, by = "hbt") %>% 
-  full_join(nov_2021_totals, by = "hbt") %>% 
-  full_join(dec_2021_totals, by = "hbt")
+prescriptions_2021 <- reduce(summarised_prescriptions, full_join, by = "hbt")
   
 prescriptions_monthly_totals <- prescriptions_2021 %>% 
   select(-hbt) %>% 
-  pivot_longer(cols = c("january":"december"),
+  pivot_longer(cols = c("January":"December"), #create a 'month' column and a 'prescriptions' column
                names_to = "month",
                values_to = "prescriptions") %>% 
   group_by(month) %>% 
-  summarise(prescriptions = sum(prescriptions))
+  summarise(prescriptions = sum(prescriptions)) %>% #the months are lowercase and out of order, so this needs fixing.
+  mutate(month = factor(month, levels = month.name, ordered = TRUE)) %>% #this coverts the month column to factors with specified levels. month.name is a built in character vector that contains the names of the months in order.
+  arrange(month) #arrange the months in order
+
+prescriptions_monthly_totals %>%
+  kable(col.names = c("Month", "Antibiotic Prescriptions"), align = "lc",
+        caption = "Antibiotic Prescriptions per Month in Scotland, 2021") %>% 
+  kable_styling("striped", full_width = FALSE)
 ```
-### COVID-19 Data
-Now I want to load the covid data from Public Health Scotland - this data set is "Weekly Tests and Cases by Health Board" from the "Viral Respiratory Diseases (Including Influenza and COVID-19) Data in Scotland" colleciton. I chose this set so that I can join it to my other data by healthboard.
+### COVID Data
+
+Next, I accessed COVID data from Public Health Scotland - this data set is "Weekly Tests and Cases by Health Board" from the "Viral Respiratory Diseases (Including Influenza and COVID-19) Data in Scotland" collection. I chose this set so that I could join it to my other data by health board.
 ```{r}
-covid_cases_tests_hb <- read_csv(here("data", "covid_cases_tests_hb.csv"), show_col_types = FALSE) %>% 
+covid_cases_tests_hb <- read_csv(here("data", "weekly_tests_cases_hb_20241113.csv"), show_col_types = FALSE) %>% 
   clean_names() %>% 
   filter(hb != "S92000003") %>% #removed the aggregated data for the whole of Scotland
   mutate(week_ending = ymd(week_ending)) #convert the week_ending column from dbl to date for easier analysis.
 ```
-Filter for the year 2021 and then turn weekly cases into monthly cases - create a graph tracking cases?
+I then filtered for the year 2021, so that I could compare it to my prescriptions data from the same year. I wrangled the data so that it could be joined to `prescriptions_2021`. 
 ```{r}
 covid_monthly_total_2021 <- covid_cases_tests_hb %>% 
   filter(year(week_ending) == 2021) %>% #filter for only the year 2021
   mutate(month = month(week_ending)) %>% #create a column containing the month so that group_by can be applied 
   group_by(month) %>% 
   summarise(monthly_cases = sum(weekly_cases)) %>% #add up the weekly cases, presenting total per month.
-    mutate(month = recode(month, "1" = "january","2" = "february","3" = "march","4" = "april","5" = "may","6" = "june","7" = "july","8" = "august", "9" = "september","10" = "october","11" = "november","12" = "december"))
-```
-### Join COVID and Prescription Data
-Here I joined `prescriptions_2021` to `covid_monthly_total_2021`, so that I can compare COVID cases and prescription rates.
-```{r}
+    mutate(month = recode(month, "1" = "January","2" = "February","3" = "March","4" = "April","5" = "May","6" = "June","7" = "July","8" = "August", "9" = "September","10" = "October","11" = "November","12" = "December")) #mutate to change the numbered month to the month name, so that it can be joined to the prescriptions data.
+
 prescriptions_covid_2021 <- prescriptions_monthly_totals %>%
-  full_join(covid_monthly_total_2021, by = "month") %>% #the months are lowercase and out of order, so this needs fixing.
-  mutate(month = str_to_title(month)) %>%  #coverts months to title case, so that month.name can be applied.
-  mutate(month = factor(month, levels = month.name, ordered = TRUE)) %>% #this coverts the month column to factors with sepcified levels. month.name is a built in character vector that contains the names of the months in order.
-  arrange(month) #arrange the months in order
+  full_join(covid_monthly_total_2021, by = "month")
 ```
-Here I use `geom_point` and `geom_smooth` from `ggplot()` to generate a graph comparing Antibiotic prescriptions and COVID cases.
+### Comparison
+
+In order to see correlation between COVID cases and prescriptions, the data must be visualized on a graph. Here I used `geom_point` and `geom_smooth` from `ggplot()` to generate a graph with prescriptions on the x-axis, and COVID cases on the y-axis, with a line representing the correlation between the two variables.
 ```{r}
 prescriptions_covid_2021 %>% 
   ggplot(aes(x = prescriptions,
              y = monthly_cases)) +
   geom_point()+
   geom_smooth(method = "lm", color = "lightpink", linetype = "solid", size = 1) + #method = lm instructs geom_smooth to use linear regression to make a line that represents the relationship between x and y.
-  labs(title = "Antibiotic Prescriptions* vs. COVID Cases in 2021", x = "Number of Prescriptions", y = "COVID Cases",
+  labs(title = "Antibiotic* Prescriptions vs. COVID Cases in 2021", x = "Number of Prescriptions", y = "COVID Cases",
        caption = "* Antibiotics commonly prescribed for resipiritory infections") +
   theme_minimal()
 ```
-This graph shows a positive correlation between the number of antibiotic prescriptions and COVID cases. he grey area represents the 95% confidence interval for the fitted line.I wanted to get more evidence for this correlation, so I used the Pearson Correlation test.
+This graph shows a positive correlation between the number of antibiotic prescriptions and COVID cases. The grey area represents the 95% confidence interval for the fitted line.  
+This correlation confirms the possibility that antibiotics may have been wrongly prescribed to treat COVID in 2021.   
+A different theory to explain the correlation between antibiotic prescription and COVID cases is that some people may developed bacterial pneumonia after COVID, and would therefore be prescribed antibiotics. To investigate this, I accessed COVID hospital admissions data, titled 'Weekly Admissions by Age'. I used decided to use hosptial admissions data, as only severe COVID infections are admitted to hospital, and these cases are more likely to go on to develop bacterial pneumonia (Wu, Adhi & Highland, 2020). I filtered for the year 2021 and summarized to calculate total admissions per month. I then joined this to `prescriptions_monthly_totals` in order to visalise the trends in admissions and prescriptions on the same graph. I divided the prescriptions values by 1000 so that both variabled could be plotted on the same set of axis.
 ```{r}
-cor.test(prescriptions_covid_2021$prescriptions, prescriptions_covid_2021$monthly_cases, method = "pearson")
-```
-The p-value is < 0.05, meaning I can reject the null hypothesis, suggesting a statistically significant correlation. cor = 0.613, suggesting positive correlation. This corroborates the correlation that can be seen on the graph.  
-Plan for the rest of the assignment:    
-   
-Aggregate the prescriptions data by health board and see if there is health board that was especially bad for it (divide total antibiotic prescriptions by the number of people living in that healthboard) and compare. Visualise on a map.
+covid_admissions <- read_csv(here("data", "admissions_ageband_week_20231004.csv"), show_col_types = FALSE) %>% 
+  clean_names() %>% 
+  filter(str_detect(date, "2021")) %>% #filter for the year 2021
+  mutate(date = ymd(date), #change the date column from 'character' to 'date'
+         month = month(date)) %>% #create a column containing month
+  group_by(month) %>% 
+  summarise(monthly_admissions = sum(number_admitted)) %>% #calculate total admissions per month
+  mutate(month = recode(month, "1" = "January","2" = "February","3" = "March","4" = "April","5" = "May","6" = "June","7" = "July","8" = "August", "9" = "September","10" = "October","11" = "November","12" = "December")) #rename the numeric months the month names
 
-Possibly compare prescription rate to a non-COVID year (2019) if space allows.
+admissions_prescriptions <- covid_admissions %>% 
+  full_join(prescriptions_monthly_totals, by = "month") %>% 
+  mutate(month = factor(month, levels = month.name, ordered = TRUE), #puts months in correct order
+         prescriptions_1000 = prescriptions/1000) #divide by 1000 so that prescription and admissions can be plotted on the same axis
+admissions_prescriptions %>% 
+  ggplot(aes(x = month)) +
+  geom_col(aes(y = monthly_admissions, fill = "Hospital Admissions")) +
+  geom_line(aes(y = prescriptions_1000, colour = "Antibiotic Prescriptions / 1000"), group = 1) +
+  scale_fill_manual(values = c("Hospital Admissions" = "lightcoral")) +  #Define color for fill legend
+  scale_colour_manual(values = c("Antibiotic Prescriptions / 1000" = "slateblue3"))+ # Define color for fill legend
+  labs(x = "Month",
+       y = "Total",
+       title = "Monthly Trends in Hospital Admissions due to COVID-19 and Antibiotic* Prescriptions",
+       subtitle = "* Antibiotics commonly prescribed for respiratory infections",
+       colour = NULL,
+       fill = NULL) + #remove legend titles 'fill' and 'colour'
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 10),
+        plot.subtitle = element_text(size = 8))
+```
+This graph shows that there is not a clear correlation between the trends in Admissions and Prescriptions in 2021. However, in order to rule out COVID related bacterial pneumonia as the cause of increase antibiotic use, details on reasons for prescription, which is beyond the scope of this report.  
+  
+It would be interesting to see whether there were some health boards in Scotland that were prescribing these antibiotics at a higher rate than others. It may then be possible to target doctors in these health boards with information campaigns about the dangers of over-prescribing antibiotics and how it may cause AMR.  
+It would be helpful to visualize the rates of antibiotic prescription per capita in each health board on a map. To do this I accessed the data set with Health Board Names and joined it to my prescriptions data. I also required data on the population size of each health board in 2021, which I got from the data set 'Health Board Projections' and filtered for the year 2021.
+```{r}
+hb_names <- read_csv(here("data", "hb14_hb19.csv"), show_col_types = FALSE) %>% 
+  clean_names() %>% 
+  select(hb, hb_name) #these are the only columns needed for this analysis.
+  
+prescriptions_hb_name <- prescriptions_2021 %>%  
+  left_join(hb_names, by = c("hbt" = "hb")) %>%
+  group_by(hb_name) %>% 
+  summarise(total_prescriptions = sum(across(January:December))) #'across' to select the columns from january to december to apply the 'sum' to.
+population_hb <- read_csv(here("data", "hb_pop_proj_03072020.csv"), show_col_types = FALSE) %>% 
+  clean_names() %>% 
+  filter(year == "2021", #filter for only  the year 2021
+         sex == "All", #removing the Female and Male rows, as I'm not looking at gender differences.
+         hb != "S92000003") #removing the aggregated data for Scotland as a whole, as I only have prescription data separated by health board
+prescriptions_hb_rates <- population_hb %>% 
+  left_join(hb_names, by = "hb") %>% #only need the hb_names for the hb's included in my data
+  full_join(prescriptions_hb_name, by = "hb_name") %>% 
+  group_by(hb_name) %>% 
+  mutate(prescription_rate = (total_prescriptions / all_ages)) #divide the total number of prescriptions by the population of that health board, so get Prescription per Captia, so I can compare between health boards of different sizes
+```
+After I had joined the three data sets, and calculated Prescription per Capita, I wanted to visualise this on a map.  
+To do this, I needed spatial data on the health boards. I joined this geometry data set to `prescriptions_hb_rates`.
+```{r message=FALSE, warning=FALSE}
+nhs_healthboards <- st_read(here("data", "NHS_healthboards_2019.shp")) %>% 
+  clean_names() 
+  
+rates_nhs_healthboards <- prescriptions_hb_rates %>%
+  mutate(hb_name = str_remove(hb_name, "NHS ")) %>% #remove 'NHS' from the HB Names, as `nhs_healthboards` does not have this prefix, so that they can be joined by `hb_name`.
+  full_join(nhs_healthboards, join_by(hb_name)) %>% 
+  st_as_sf() #transforms this object to sf, so that it can be used with geom_sf to plot a map.
+
+rates_nhs_healthboards %>% 
+  ggplot() +
+  geom_sf(aes(fill = prescription_rate)) +  # Use fill for the rate
+  scale_fill_gradientn(colors = c("#f7b7b7", "#f7b7b7", "#f1d9d9", "#e5e5e5", "#d0f0f0"))+# Color scale for Prescriptions per Captia.
+  geom_sf_text(aes(label = hb_name), size = 2, color = "midnightblue", fontface = "bold")+ #label each health board on the map, specifying size, colour and font, to improve comprehension from the map.
+  labs(fill = "Prescriptions per Capita",  # Legend title
+       title = "Antibiotic* Prescription Rates by Health Board in Scotland, 2021",
+       subtitle = "* Antibiotics commonly prescribed for respiritory infections") +
+  theme_minimal() +
+  theme(axis.text = element_blank(),  
+        axis.ticks = element_blank()) # Hide axis text and ticks, as they are not needed.
+```
+This map shows that the Lanarkshire has considerably higher antibiotic prescriptions rates than other health boards in Scotland. More investigation is required to determine the cause of this. Some have suggested that the increase in telephone appointments with GPs due to lock-down restrictions limiting face-to-face appointments is to blame for the rise in antibiotic use (Gagliotti, *et al*. 2021). Further research could compare rates of telephone consultation in each health board to antibiotic prescription to ascertain whether this is true.
+
+### File Storage
+
+Files were downloaded from [Public Health Scotland](https://www.opendata.nhs.scot/) and stored in a folder titled 'data'. They were accessed using `here()`.  
+The following datasets were used: [Prescriptions in the Community - by Prescriber Location](https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community), [Weekly Tests and Cases by Health Board](https://www.opendata.nhs.scot/dataset/viral-respiratory-diseases-including-influenza-and-covid-19-data-in-scotland/resource/2803acc8-8ec3-4c4a-81a5-f10952bf66f4), [Health Board 2014 - Health Board 2019](https://www.opendata.nhs.scot/dataset/geography-codes-and-labels/resource/652ff726-e676-4a20-abda-435b98dd7bdc), [Health Board Projections](https://www.opendata.nhs.scot/dataset/population-projections/resource/0876fc67-05e6-4e87-bc30-c4b0756fff04), [Weekly Admissions by Age](https://www.opendata.nhs.scot/dataset/covid-19-in-scotland/resource/b5e3fa11-8a85-4946-bbb2-2e800d4e3594).  
+
+### Generative AI Statement
+
+Generative AI was used in this report to trouble-shoot. Error messages were pasted into ChatGPT to identify errors in code, for example missing quotation marks ("") or commas(,). It was not used to write code.  
+
+### References
+
+Gagliotti, C., Buttazzi, R., Ricchizzi, E., Di Mario, S., Tedeschi, S. and Moro, M.L. (2021). Community use of antibiotics during the COVID-19 lockdown. Infectious Diseases, 53(2), pp.142-144.  
+   
+NHS (2022) Antibiotics - Overview. Available at: https://www.nhs.uk/conditions/antibiotics/ (Accessed: 18 November 2024).    
+  
+Shallcross, L.J. and Davies, D.S.C. (2014). Antibiotic overuse: a key driver of antimicrobial resistance. British Journal of General Practice, 64(629), pp.604-605.     
+  
+Wu, C.P., Adhi, F. and Highland, K. (2020). Recognition and management of respiratory co-infection and secondary bacterial pneumonia in patients with COVID-19. Cleveland Clinic journal of medicine, 87(11), pp.659-663.
