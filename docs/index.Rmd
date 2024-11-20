@@ -16,17 +16,16 @@ library(here) # for help importing data
 library(knitr) #for making tables
 library(kableExtra) #for improving my tables
 library(sf) #for making the map plot
-library(purrr) # for using the map() function
-library(patchwork)
 ```
-### Introduction
-
-In this report, I explored the relationship between the prescription of nine antibiotics commonly prescribed on the NHS to treat respiratory infections, and the number of COVID-19 cases in Scotland in 2021.  
-Antimicrobial resistance (AMR) is a growing global concern, and one of the key contributors to its rise is the overuse and misuse of antibiotics (Shallcross & Davies, 2014). In this context, it is crucial to understand how patterns of antibiotic prescribing may be influenced by factors such as the COVID-19 pandemic. Specifically, I aimed to investigate whether the prescription rates of these antibiotics rose and fell with the number of COVID-19 cases, potentially indicating the prescription of antibiotics to people suffering from COVID, not bacterial infections. It is important to note that COVID-19 is caused by a virus, and antibiotics are not effective in treating viral infections. Therefore, any rise in prescriptions could reflect inappropriate use of antibiotics, which may contribute to the AMR problem.
-
-### Prescriptions Data
-
-I started by creating a function for the the importing, cleaning and filtering of my monthly prescription data. I used `clean_names` to tidy up the columns names, and filtered `bnf_item_description` for the following drugs: Phenoxymethylpenicillin, Amoxicillin, co-Amoxiclav, Azithromycin, Clarithromycin, Erythromycin, Vibramycin-D (doxycycline), Doxycycline, Cefalexin. According to the NHS website, these are the antibiotics most commonly prescribed for respiratory infections (NHS, 2022). I added a line of code to remove values that are not whole number from the 'paid_quantity' column. This is because some of the data sets have errors where this column has decimals, which is not possible as it is not possible to give 0.5 of a prescription.
+### Introduction. 
+  
+Antimicrobial resistance (AMR) is a growing global concern, and one of the key contributors to its rise is the overuse and misuse of antibiotics (Shallcross & Davies, 2014). In this context, it is crucial to understand how patterns of antibiotic prescriptions may be influenced by factors such as the COVID-19 pandemic. Specifically, I aimed to investigate whether the prescription rates of these antibiotics rose and fell with the number of COVID-19 cases, potentially indicating the prescription of antibiotics to people suffering from COVID, not bacterial infections. It is important to note that COVID-19 is caused by a virus, and antibiotics are not effective in treating viral infections. Therefore, any rise in prescriptions could reflect inappropriate use of antibiotics, which may contribute to the AMR problem.  
+  
+In this report, I explored the relationship between the prescription of nine antibiotics commonly prescribed to treat respiratory infections, and the number of COVID-19 cases in Scotland in 2021.I went on to consider whether the increase in antibiotic use was due to secondary bacterial pneumonia in COVID cases, by comparing trends in antibiotic prescriptions with trends in hospital admissions for COVID-19. Following this, I visualised Antibiotic Prescriptions per Capita for each health board to investigate differing prescription rates in each Health Board.  
+  
+### Prescriptions Data.  
+  
+I started by creating a function for the the importing, cleaning and filtering of my monthly prescription data. See "File Storage" at the end of the report for source of all files used. I used `clean_names` to tidy up the columns names, and filtered `bnf_item_description` for the following drugs: Phenoxymethylpenicillin, Amoxicillin, co-Amoxiclav, Azithromycin, Clarithromycin, Erythromycin, Vibramycin-D (doxycycline), Doxycycline, Cefalexin. According to the NHS website, these are the antibiotics most commonly prescribed for respiratory infections (NHS, 2022). I added a line of code to remove values that are not whole number from the 'paid_quantity' column. This is because some of the data sets have errors where this column has decimals, which is not possible as it is not possible to give 0.5 of a prescription.
 ```{r}
 function_clean_filter_drugs <- function(data_month) {
     read_csv(here("data", data_month), show_col_types = FALSE) %>% 
@@ -35,30 +34,27 @@ function_clean_filter_drugs <- function(data_month) {
     filter(paid_quantity == floor(paid_quantity))  #floor rounds down to the nearest whole number, so this line filters for values in 'paid_quantity' that have no decimals.
   } 
 ```
-Then I downloaded the data sets for each month in 2021, so that I could plot a graph of the correlation between antibiotic prescriptions and COVID cases in 2021. I did this by creating a vector containing the file names. Then I used the `map()` function to apply `unction_clean_filter_drugs` to each month. I remaned the files in the 
+Then I downloaded the data sets for each month in 2021, so that I could plot a graph of the correlation between antibiotic prescriptions and COVID cases in 2021. I did this by creating a vector containing the file names. Then I used the `map()` function to apply `function_clean_filter_drugs` to each month. I renamned the files in the vector with the month they correspond to for ease of analysis later on.
 ```{r}
-prescription_files <- c(
-  "pitc202101.csv", "pitc202102.csv", "pitc202103.csv", "pitc202104.csv",
+prescription_files <- c("pitc202101.csv", "pitc202102.csv", "pitc202103.csv", "pitc202104.csv",
   "pitc202105.csv", "pitc202106.csv", "pitc202107.csv",
   "pitc202108.csv", "pitc202109.csv", "pitc202110.csv",
-  "pitc202111.csv", "pitc202112.csv")
-prescription_data_list <- map(prescription_files, function_clean_filter_drugs)
-names(prescription_data_list) <- c(
-  "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"
-)
+  "pitc202111.csv", "pitc202112.csv") #creating a vector containing the files
+prescription_data_list <- map(prescription_files, function_clean_filter_drugs) #map() applies function_clean_filter_drugs to all of the files in prescription_files
+names(prescription_data_list) <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December") #renaming the items
 ```
-Then I wrangled these to give totals for each health board. I chose to do total in each health board, firstly so I could easily join the data sets, but also so that later on I could compare the rates of antibiotic prescription in each health board, and see if there are any that are especially bad for over-prescription.
+Then I wrangled these to give totals for each health board. I chose to calculate total in each health board, firstly so I could easily join the data sets, but also so that later on I could compare the rates of antibiotic prescription in each health board, and see if there are any that have especially high rates of prescription.
 ```{r}
 function_summarise_prescriptions <- function(data, month_name) {
   data %>%
     group_by(hbt) %>%
-    summarise(!!month_name := sum(paid_quantity)) %>%
+    summarise(!!month_name := sum(paid_quantity)) %>% #create a new column, named based of month_name
     filter(hbt != "SB0806") #removing an error - this health board does not exist
 }
-
-summarised_prescriptions <- imap(prescription_data_list, ~ function_summarise_prescriptions(.x, .y))
+#imap() maps over the elements in prescription_data_list, applying the function_summarise_prescriptions and give the new value and its name. 
+summarised_prescriptions <- imap(prescription_data_list, function_summarise_prescriptions)
 ```
-Then I joined the totals from each month together, and wrangled the data using `pivot_longer` to create a dataset containing prescriptions per month for 2021.
+Then I joined the totals from each month together, and wrangled the data using `pivot_longer` to create a dataset containing prescriptions per month for 2021. I then visualised this data frame in a table using `kable()`.
 ```{r}
 prescriptions_2021 <- reduce(summarised_prescriptions, full_join, by = "hbt")
   
@@ -73,20 +69,21 @@ prescriptions_monthly_totals <- prescriptions_2021 %>%
   arrange(month) #arrange the months in order
 
 prescriptions_monthly_totals %>%
-  kable(col.names = c("Month", "Antibiotic Prescriptions"), align = "lc",
+  kable(col.names = c("Month", "Antibiotic Prescriptions"), 
+        align = "lc", #align data in rows, to the left, in the centre.
         caption = "Antibiotic Prescriptions per Month in Scotland, 2021") %>% 
   kable_styling("striped", full_width = FALSE)
 ```
 ### COVID Data
 
-Next, I accessed COVID data from Public Health Scotland - this data set is "Weekly Tests and Cases by Health Board" from the "Viral Respiratory Diseases (Including Influenza and COVID-19) Data in Scotland" collection. I chose this set so that I could join it to my other data by health board.
+Next, I accessed COVID data from Public Health Scotland - this data set is "Weekly Tests and Cases by Health Board". I chose this set so that I could join it to my other data by health board.
 ```{r}
 covid_cases_tests_hb <- read_csv(here("data", "weekly_tests_cases_hb_20241113.csv"), show_col_types = FALSE) %>% 
   clean_names() %>% 
   filter(hb != "S92000003") %>% #removed the aggregated data for the whole of Scotland
   mutate(week_ending = ymd(week_ending)) #convert the week_ending column from dbl to date for easier analysis.
 ```
-I then filtered for the year 2021, so that I could compare it to my prescriptions data from the same year. I wrangled the data so that it could be joined to `prescriptions_2021`. 
+I then filtered for the year 2021, so that I could compare it to my prescriptions data. I wrangled the data so that it could be joined to `prescriptions_2021`. 
 ```{r}
 covid_monthly_total_2021 <- covid_cases_tests_hb %>% 
   filter(year(week_ending) == 2021) %>% #filter for only the year 2021
@@ -96,7 +93,7 @@ covid_monthly_total_2021 <- covid_cases_tests_hb %>%
     mutate(month = recode(month, "1" = "January","2" = "February","3" = "March","4" = "April","5" = "May","6" = "June","7" = "July","8" = "August", "9" = "September","10" = "October","11" = "November","12" = "December")) #mutate to change the numbered month to the month name, so that it can be joined to the prescriptions data.
 
 prescriptions_covid_2021 <- prescriptions_monthly_totals %>%
-  full_join(covid_monthly_total_2021, by = "month")
+  full_join(covid_monthly_total_2021, by = "month") #full_join used to keep all the data from both dataframes
 ```
 ### Comparison
 
@@ -106,14 +103,13 @@ prescriptions_covid_2021 %>%
   ggplot(aes(x = prescriptions,
              y = monthly_cases)) +
   geom_point()+
-  geom_smooth(method = "lm", color = "lightpink", linetype = "solid", size = 1) + #method = lm instructs geom_smooth to use linear regression to make a line that represents the relationship between x and y.
+  geom_smooth(method = "lm", color = "lightpink", linetype = "solid", size = 1) + #method = lm instructs geom_smooth to use a linear regression model to make a line that represents the relationship between x and y.
   labs(title = "Antibiotic* Prescriptions vs. COVID Cases in 2021", x = "Number of Prescriptions", y = "COVID Cases",
        caption = "* Antibiotics commonly prescribed for resipiritory infections") +
   theme_minimal()
 ```
-This graph shows a positive correlation between the number of antibiotic prescriptions and COVID cases. The grey area represents the 95% confidence interval for the fitted line.  
-This correlation confirms the possibility that antibiotics may have been wrongly prescribed to treat COVID in 2021.   
-A different theory to explain the correlation between antibiotic prescription and COVID cases is that some people may developed bacterial pneumonia after COVID, and would therefore be prescribed antibiotics. To investigate this, I accessed COVID hospital admissions data, titled 'Weekly Admissions by Age'. I used decided to use hosptial admissions data, as only severe COVID infections are admitted to hospital, and these cases are more likely to go on to develop bacterial pneumonia (Wu, Adhi & Highland, 2020). I filtered for the year 2021 and summarized to calculate total admissions per month. I then joined this to `prescriptions_monthly_totals` in order to visalise the trends in admissions and prescriptions on the same graph. I divided the prescriptions values by 1000 so that both variabled could be plotted on the same set of axis.
+This graph shows a positive correlation between the number of antibiotic prescriptions and COVID cases. The grey area represents the 95% confidence interval for the fitted line. This correlation confirms the possibility that antibiotics may have been wrongly prescribed to treat COVID in 2021.      
+Another theory to explain the correlation between antibiotic prescription and COVID cases is that some people may developed bacterial pneumonia after COVID, and would therefore be prescribed antibiotics. To investigate this, I accessed COVID hospital admissions data, titled 'Weekly Admissions by Age'. I used decided to use hospital admissions data, as only severe COVID infections are admitted to hospital, and these cases are more likely to go on to develop bacterial pneumonia (Wu, Adhi & Highland, 2020). I filtered for the year 2021 and summarized to calculate total admissions per month. I then joined this to `prescriptions_monthly_totals` in order to visualize the trends in admissions and prescriptions on the same graph. I divided the prescriptions values by 1000 so that both variables could be plotted on the same set of axis.
 ```{r}
 covid_admissions <- read_csv(here("data", "admissions_ageband_week_20231004.csv"), show_col_types = FALSE) %>% 
   clean_names() %>% 
@@ -141,14 +137,14 @@ admissions_prescriptions %>%
        colour = NULL,
        fill = NULL) + #remove legend titles 'fill' and 'colour'
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        plot.title = element_text(size = 10),
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), #tilt acis titles for readability
+        plot.title = element_text(size = 10), #decrease plot title size so it fits on page
         plot.subtitle = element_text(size = 8))
 ```
-This graph shows that there is not a clear correlation between the trends in Admissions and Prescriptions in 2021. However, in order to rule out COVID related bacterial pneumonia as the cause of increase antibiotic use, details on reasons for prescription, which is beyond the scope of this report.  
+This graph shows that there is not a clear correlation between the trends in Admissions and Prescriptions in 2021. However, in order to rule out COVID related bacterial pneumonia as the cause of increased antibiotic use, details on reasons for prescription would be required, which is beyond the scope of this report.  
   
 It would be interesting to see whether there were some health boards in Scotland that were prescribing these antibiotics at a higher rate than others. It may then be possible to target doctors in these health boards with information campaigns about the dangers of over-prescribing antibiotics and how it may cause AMR.  
-It would be helpful to visualize the rates of antibiotic prescription per capita in each health board on a map. To do this I accessed the data set with Health Board Names and joined it to my prescriptions data. I also required data on the population size of each health board in 2021, which I got from the data set 'Health Board Projections' and filtered for the year 2021.
+It would be helpful to visualize the rates of antibiotic prescription per capita in each health board on a map. To do this I accessed the data set with Health Board Names and joined it to my prescriptions data. I also required data on the population size of each Health Board in 2021, which I got from the data set 'Health Board Projections' and filtered for the year 2021.
 ```{r}
 hb_names <- read_csv(here("data", "hb14_hb19.csv"), show_col_types = FALSE) %>% 
   clean_names() %>% 
@@ -169,8 +165,8 @@ prescriptions_hb_rates <- population_hb %>%
   group_by(hb_name) %>% 
   mutate(prescription_rate = (total_prescriptions / all_ages)) #divide the total number of prescriptions by the population of that health board, so get Prescription per Captia, so I can compare between health boards of different sizes
 ```
-After I had joined the three data sets, and calculated Prescription per Capita, I wanted to visualise this on a map.  
-To do this, I needed spatial data on the health boards. I joined this geometry data set to `prescriptions_hb_rates`.
+After I had joined the three data sets, and calculated Prescription per Capita, I wanted to visualize this on a map.  
+To do this, I needed spatial data on the health boards. I joined this geometry data set to `prescriptions_hb_rates`. I used this joined dataset to create a map of Scottish Health Boards, with colour varying by prescriptions per captia.
 ```{r message=FALSE, warning=FALSE}
 nhs_healthboards <- st_read(here("data", "NHS_healthboards_2019.shp")) %>% 
   clean_names() 
@@ -184,7 +180,6 @@ rates_nhs_healthboards %>%
   ggplot() +
   geom_sf(aes(fill = prescription_rate)) +  # Use fill for the rate
   scale_fill_gradientn(colors = c("#f7b7b7", "#f7b7b7", "#f1d9d9", "#e5e5e5", "#d0f0f0"))+# Color scale for Prescriptions per Captia.
-  geom_sf_text(aes(label = hb_name), size = 2, color = "midnightblue", fontface = "bold")+ #label each health board on the map, specifying size, colour and font, to improve comprehension from the map.
   labs(fill = "Prescriptions per Capita",  # Legend title
        title = "Antibiotic* Prescription Rates by Health Board in Scotland, 2021",
        subtitle = "* Antibiotics commonly prescribed for respiritory infections") +
@@ -192,16 +187,16 @@ rates_nhs_healthboards %>%
   theme(axis.text = element_blank(),  
         axis.ticks = element_blank()) # Hide axis text and ticks, as they are not needed.
 ```
-This map shows that the Lanarkshire has considerably higher antibiotic prescriptions rates than other health boards in Scotland. More investigation is required to determine the cause of this. Some have suggested that the increase in telephone appointments with GPs due to lock-down restrictions limiting face-to-face appointments is to blame for the rise in antibiotic use (Gagliotti, *et al*. 2021). Further research could compare rates of telephone consultation in each health board to antibiotic prescription to ascertain whether this is true.
+This map shows that the Lanarkshire has considerably higher antibiotic prescriptions rates than other health boards in Scotland. More investigation is required to determine the cause of this. Some have suggested that the increase in telephone appointments with GPs due to lock-down restrictions limiting face-to-face appointments is to blame for the rise in antibiotic use (Gagliotti, *et al*. 2021). Further research could compare rates of telephone consultation in each health board to antibiotic prescription to ascertain whether this is true, however this is beyone the scope of this report.
 
 ### File Storage
 
 Files were downloaded from [Public Health Scotland](https://www.opendata.nhs.scot/) and stored in a folder titled 'data'. They were accessed using `here()`.  
-The following datasets were used: [Prescriptions in the Community - by Prescriber Location](https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community), [Weekly Tests and Cases by Health Board](https://www.opendata.nhs.scot/dataset/viral-respiratory-diseases-including-influenza-and-covid-19-data-in-scotland/resource/2803acc8-8ec3-4c4a-81a5-f10952bf66f4), [Health Board 2014 - Health Board 2019](https://www.opendata.nhs.scot/dataset/geography-codes-and-labels/resource/652ff726-e676-4a20-abda-435b98dd7bdc), [Health Board Projections](https://www.opendata.nhs.scot/dataset/population-projections/resource/0876fc67-05e6-4e87-bc30-c4b0756fff04), [Weekly Admissions by Age](https://www.opendata.nhs.scot/dataset/covid-19-in-scotland/resource/b5e3fa11-8a85-4946-bbb2-2e800d4e3594).  
+The following datasets were used: [Prescriptions in the Community - by Prescriber Location](https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community), [Weekly Tests and Cases by Health Board](https://www.opendata.nhs.scot/dataset/viral-respiratory-diseases-including-influenza-and-covid-19-data-in-scotland/resource/2803acc8-8ec3-4c4a-81a5-f10952bf66f4), [Health Board 2014 - Health Board 2019](https://www.opendata.nhs.scot/dataset/geography-codes-and-labels/resource/652ff726-e676-4a20-abda-435b98dd7bdc), [Health Board Projections](https://www.opendata.nhs.scot/dataset/population-projections/resource/0876fc67-05e6-4e87-bc30-c4b0756fff04), [Weekly Admissions by Age](https://www.opendata.nhs.scot/dataset/covid-19-in-scotland/resource/b5e3fa11-8a85-4946-bbb2-2e800d4e3594), [NHS Health Boards Scotland - Spatial Data](https://spatialdata.gov.scot/geonetwork/srv/api/records/f12c3826-4b4b-40e6-bf4f-77b9ed01dc14).  
 
 ### Generative AI Statement
 
-Generative AI was used in this report to trouble-shoot. Error messages were pasted into ChatGPT to identify errors in code, for example missing quotation marks ("") or commas(,). It was not used to write code.  
+Generative AI was used in this report to trouble-shoot. Error messages were pasted into ChatGPT to identify mistakes in the code, for example missing quotation marks ("") or commas (,). It was not used to write code.  
 
 ### References
 
