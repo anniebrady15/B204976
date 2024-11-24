@@ -11,7 +11,7 @@
 
 <meta name="author" content="Annie Brady" />
 
-<meta name="date" content="2024-11-21" />
+<meta name="date" content="2024-11-24" />
 
 <title>Trends in Antibiotic Prescription in Scotland in 2021 - is there correlation with COVID-19 cases?</title>
 
@@ -577,7 +577,7 @@ display: none;
 <h1 class="title toc-ignore">Trends in Antibiotic Prescription in
 Scotland in 2021 - is there correlation with COVID-19 cases?</h1>
 <h4 class="author">Annie Brady</h4>
-<h4 class="date">2024-11-21</h4>
+<h4 class="date">2024-11-24</h4>
 
 </div>
 
@@ -616,7 +616,7 @@ Board.</p>
 <h3>Prescriptions Data.</h3>
 <p>I started by creating a function for the the importing, cleaning and
 filtering of my monthly prescription data. See “File Storage” at the end
-of the report for source of all files used. I used
+of the report for the source of all files used. I used
 <code>clean_names</code> to tidy up the columns names, and filtered
 <code>bnf_item_description</code> for the following drugs:
 Phenoxymethylpenicillin, Amoxicillin, co-Amoxiclav, Azithromycin,
@@ -841,11 +841,11 @@ Another theory to explain the correlation between antibiotic
 prescription and COVID cases is that some people may developed bacterial
 pneumonia after COVID, and would therefore be prescribed antibiotics. To
 investigate this, I accessed COVID hospital admissions data, titled
-‘Weekly Admissions by Age’. I used decided to use hospital admissions
-data, as only severe COVID infections are admitted to hospital, and
-these cases are more likely to go on to develop bacterial pneumonia (Wu,
-Adhi &amp; Highland, 2020). I filtered for the year 2021 and summarized
-to calculate total admissions per month. I then joined this to
+‘Weekly Admissions by Age’. I decided to use hospital admissions data,
+as only severe COVID infections are admitted to hospital, and these
+cases are more likely to go on to develop bacterial pneumonia (Wu, Adhi
+&amp; Highland, 2020). I filtered for the year 2021 and summarized to
+calculate total admissions per month. I then joined this to
 <code>prescriptions_monthly_totals</code> in order to visualize the
 trends in admissions and prescriptions on the same graph. I divided the
 prescriptions values by 1000 so that both variables could be plotted on
@@ -917,7 +917,7 @@ prescriptions_hb_rates &lt;- population_hb %&gt;%
 <p>After I had joined the three data sets, and calculated Prescription
 per Capita, I wanted to visualize this on a map.<br />
 To do this, I needed spatial data on the health boards. I joined this
-geometry data set to <code>prescriptions_hb_rates</code>. I used this
+spatial data set to <code>prescriptions_hb_rates</code>. I used this
 joined dataset to create a map of Scottish Health Boards, with colour
 varying by prescriptions per captia.</p>
 <pre class="r"><code>nhs_healthboards &lt;- st_read(here(&quot;data&quot;, &quot;NHS_healthboards_2019.shp&quot;)) %&gt;% 
@@ -938,7 +938,7 @@ varying by prescriptions per captia.</p>
 rates_nhs_healthboards %&gt;% 
   ggplot() +
   geom_sf(aes(fill = prescription_rate)) +  # Use fill for the rate
-  scale_fill_gradientn(colors = c(&quot;#f7b7b7&quot;, &quot;#f7b7b7&quot;, &quot;#f1d9d9&quot;, &quot;#e5e5e5&quot;, &quot;#d0f0f0&quot;))+# Color scale for Prescriptions per Captia.
+  scale_fill_gradientn(colors = c(&quot;#f7b7b7&quot;, &quot;#f7b7b7&quot;, &quot;#f1d9d9&quot;, &quot;#e5e5e5&quot;, &quot;#d0f0f0&quot;))+#color scale for prescriptions per captia.
   labs(fill = &quot;Prescriptions per Capita&quot;,  # Legend title
        title = &quot;Antibiotic* Prescription Rates by Health Board in Scotland, 2021&quot;,
        subtitle = &quot;* Antibiotics commonly prescribed for respiritory infections&quot;) +
